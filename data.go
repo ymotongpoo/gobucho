@@ -1,7 +1,7 @@
 package bucho
 
 type Statuses []struct{
-	Text string `json:"id_str"`
+	Text string `json:"text"`
 }
 
 const url = "https://api.twitter.com/1/statuses/user_timeline/torufurukawa.json"
