@@ -1,1 +1,12 @@
+# Bucho
 Yes, we love bucho!
+
+# Usage
+## Check latest tweet
+$ gobucho
+
+## Check torumemo episodes
+### on terminal
+$ gobucho -episode 11
+### on browser 
+$ gobucho -episode 22 -browser
