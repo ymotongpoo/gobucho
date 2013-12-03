@@ -3,11 +3,17 @@ package bucho
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
-	"os"
 	"os/exec"
+	"runtime"
 	"strings"
+
+	"launchpad.net/xmlpath"
 )
+
+const TorumemoURL = `http://oldriver.org/torumemo/`
 
 func Show() string {
 	// Say show :-)
@@ -54,22 +60,70 @@ func AllStatus() (string, error) {
 }
 
 // Torumemo launches web browser with torumemo, one of the greatest text sites,
-// and returns status of the operation. This function assumes default os as Mac or Linux
-// TODO (ymotongpoo): test this function on windows
-func Torumemo() (string, error) {
-	var cmd *exec.Cmd
+// and returns status of the operation.
+func Torumemo(browser bool, episode int) error {
+	var episodePage string
+	if episode > 0 {
+		episodePage = fmt.Sprintf("%03d.html", episode)
+	} else {
+		episodePage = "index.html"
+	}
+	urlStr := TorumemoURL + episodePage
+
 	var err error
-	if os.Getenv("WINVER") != "" {
-		cmd = exec.Command("$ie = New-Object -com InternetExplorer.Application;" + 
-			`$ie.Navigate("http://oldriver.org/torumemo/")`)
+	if browser {
+		err = openUrl(urlStr)
+	} else {
+		resp, err := http.Get(urlStr)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		title, body, err := ParseTorumemo(resp.Body)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%v\n\n%v", title, body)
 	}
-	cmd = exec.Command("open", "http://oldriver.org/torumemo/")
-	
-	if cmd == nil {
-		return "wrong command", err
-	} else if err = cmd.Run(); err != nil {
-		return "Error", err
-	}
-	return "OK", nil
+	return err
 }
 
+// openUrl opens a browser window to that location.
+// This code taken from: http://stackoverflow.com/questions/10377243/how-can-i-launch-a-process-that-is-not-a-file-in-go
+func openUrl(url string) error {
+	var err error
+	switch runtime.GOOS {
+	case "linux":
+		err = exec.Command("xdg-open", url).Start()
+	case "windows":
+		err = exec.Command("rundll32", url, "http://localhost:4001/").Start()
+	case "darwin":
+		err = exec.Command("open", url).Start()
+	default:
+		err = fmt.Errorf("Cannot open URL %s on this platform", url)
+	}
+	return err
+}
+
+func ParseTorumemo(content io.ReadCloser) (string, string, error) {
+	datePath := xmlpath.MustCompile(`//div[@class="date"]`)
+	titlePath := xmlpath.MustCompile(`//div[@class="title"]`)
+	contentPath := xmlpath.MustCompile(`//div[@class="body"]/p`)
+	root, err := xmlpath.ParseHTML(content)
+	if err != nil {
+		return "", "", err
+	}
+
+	date, _ := datePath.String(root)
+	title, _ := titlePath.String(root)
+	date = strings.TrimSpace(date)
+	title = strings.TrimSpace(title)
+
+	iter := contentPath.Iter(root)
+	var body string
+	for iter.Next() {
+		body += iter.Node().String()
+	}
+	return date + " " + title, body, err
+}
